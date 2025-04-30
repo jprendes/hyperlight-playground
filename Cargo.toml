@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/host",
+    "crates/guest",
+    "crates/hl-guest",
+    "crates/hl-guest-macros",
+]
+
+[workspace.dependencies]
+hl-guest = { path = "crates/hl-guest" }
+hl-guest-macros = { path = "crates/hl-guest-macros" }
+hyperlight-guest = { version = "0.3.0", default-features = false }
+hyperlight-common = { version = "0.3.0", default-features = false }
+hyperlight-host = { version = "0.3.0", features = ["kvm"], default-features = false }
+
+[profile.release]
+panic = "abort"
+
+[profile.dev]
+panic = "abort"
