@@ -62,3 +62,9 @@ fn life(name: String) -> Result<i32, Error> {
     return Ok(42);
 }
 ```
+
+# Running the demo
+
+```bash
+cargo build -p guest --target=x86_64-unknown-none && cargo run -p host -- target/x86_64-unknown-none/debug/guest
+```

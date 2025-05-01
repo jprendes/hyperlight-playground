@@ -1,6 +1,4 @@
-use std::io::stdin;
 use std::io::stdout;
-use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,6 +20,8 @@ use hyperlight_host::sandbox_state::sandbox::EvolvableSandbox;
 use hyperlight_host::sandbox_state::transition::Noop;
 use hyperlight_host::{MultiUseSandbox, UninitializedSandbox};
 
+mod stdin;
+
 #[derive(Parser, Debug)]
 struct Args {
     /// Guest binary to execute
@@ -38,13 +38,26 @@ fn main() -> Result<()> {
     };
     let writer = Arc::new(StdMutex::new(writer));
 
+    let stdin = Arc::new(stdin::BlockingStdin::new());
+    stdin.spawn();
+
+    let stdin_clone = stdin.clone();
     let reader = move |count: u64| -> Result<Vec<u8>, HyperlightError> {
-        let mut buf = vec![0u8; count as usize];
-        let n = stdin().read(&mut buf)?;
-        buf.truncate(n);
-        Ok(buf)
+        Ok(stdin_clone.read(count as usize))
     };
     let reader = Arc::new(StdMutex::new(reader));
+
+    let stdin_clone = stdin.clone();
+    let try_read = move |count: u64| -> Result<Vec<u8>, HyperlightError> {
+        Ok(stdin_clone.try_read(count as usize))
+    };
+    let try_read = Arc::new(StdMutex::new(try_read));
+
+    let stdin_clone = stdin.clone();
+    let poll_read = move |timeout: u64| -> Result<bool, HyperlightError> {
+        Ok(stdin_clone.poll_data(Duration::from_micros(timeout)))
+    };
+    let poll_read = Arc::new(StdMutex::new(poll_read));
 
     let time = move || -> Result<u64, HyperlightError> {
         let now = std::time::SystemTime::now();
@@ -55,13 +68,17 @@ fn main() -> Result<()> {
     };
     let time = Arc::new(StdMutex::new(time));
 
+    let sleep = |duration: u64| -> Result<(), HyperlightError> {
+        std::thread::sleep(Duration::from_micros(duration));
+        Ok(())
+    };
+    let sleep = Arc::new(StdMutex::new(sleep));
+
     let mut cfg = SandboxConfiguration::default();
     cfg.set_kernel_stack_size(2 * 1024 * 1024);
     cfg.set_heap_size(32 * 1024 * 1024);
     cfg.set_output_data_size(4 * 1024 * 1024);
     cfg.set_max_execution_time(Duration::from_secs(100000));
-    cfg.set_max_initialization_time(Duration::from_secs(100000));
-    cfg.set_max_execution_cancel_wait_time(Duration::from_secs(100000));
 
     // Create an uninitialized sandbox with a guest binary
     let mut sandbox = UninitializedSandbox::new(
@@ -72,15 +89,18 @@ fn main() -> Result<()> {
     )?;
 
     reader.register(&mut sandbox, "HostInput")?;
+    try_read.register(&mut sandbox, "TryInput")?;
+    poll_read.register(&mut sandbox, "PollInput")?;
     time.register(&mut sandbox, "GetTime")?;
+    sleep.register(&mut sandbox, "Sleep")?;
 
     let mut sandbox: MultiUseSandbox = sandbox.evolve(Noop::default())?;
 
     // Call guest function
     let result = sandbox.call_guest_function_by_name(
-        "life", // function must be defined in the guest binary
+        "Main", // function must be defined in the guest binary
         ReturnType::Int,
-        Some(vec![ParameterValue::String("Jorge".to_string())]),
+        Some(vec![ParameterValue::String("my friend".to_string())]),
     )?;
 
     let ReturnValue::Int(result) = result else {

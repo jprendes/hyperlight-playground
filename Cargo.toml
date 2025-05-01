@@ -3,12 +3,15 @@ resolver = "2"
 members = [
     "crates/host",
     "crates/guest",
+    "crates/guest-async",
+    "crates/hl-guest-async",
     "crates/hl-guest",
     "crates/hl-guest-macros",
 ]
 
 [workspace.dependencies]
 hl-guest = { path = "crates/hl-guest" }
+hl-guest-async = { path = "crates/hl-guest-async" }
 hl-guest-macros = { path = "crates/hl-guest-macros" }
 hyperlight-guest = { version = "0.3.0", default-features = false }
 hyperlight-common = { version = "0.3.0", default-features = false }

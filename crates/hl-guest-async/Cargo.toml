@@ -1,0 +1,9 @@
+[package]
+name = "hl-guest-async"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hl-guest = { workspace = true }
+futures = { version = "0.3", default-features = false, features = ["alloc"] }
+spin = { version = "0.10.0", default-features = false, features = ["mutex", "spin_mutex", "lazy"] }
