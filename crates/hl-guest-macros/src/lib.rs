@@ -3,7 +3,7 @@ use proc_macro_crate::{crate_name, FoundCrate};
 use quote::quote;
 use syn::parse::{Error, Parse, ParseStream, Result};
 use syn::spanned::Spanned as _;
-use syn::{parse_macro_input, ForeignItemFn, ItemFn, LitStr, Pat};
+use syn::{parse_macro_input, parse_quote, ForeignItemFn, ItemFn, LitStr, Pat};
 
 enum NameArg {
     None,
@@ -71,6 +71,20 @@ pub fn guest_function(attr: TokenStream, item: TokenStream) -> TokenStream {
             quote! { #ty }
         }
     };
+
+    let mut fn_declaration = fn_declaration;
+    if fn_declaration.sig.asyncness.is_some() {
+        fn_declaration.sig.asyncness = None;
+        let block = fn_declaration.block.clone();
+        fn_declaration.block = Box::new(syn::Block {
+            brace_token: fn_declaration.block.brace_token,
+            stmts: parse_quote! {
+                hl_guest_async::block_on(async move {
+                    #block
+                })
+            },
+        });
+    }
 
     let output = quote! {
         #fn_declaration

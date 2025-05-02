@@ -4,46 +4,40 @@
 extern crate alloc;
 use core::time::Duration;
 
-use alloc::string::String;
-use futures::{select_biased, FutureExt};
+use alloc::string::{String, ToString as _};
 
-use hl_guest::{guest_function, println};
+use hl_guest::io::{stdout, Write as _};
+use hl_guest::{guest_function, println, print};
 use hl_guest_async::io::stdin;
-use hl_guest_async::time::sleep;
-use hl_guest_async::Runtime;
+use hl_guest_async::spawn;
+use hl_guest_async::time::{sleep, Timeout as _};
 
 #[guest_function("Main")]
-fn main(name: String) -> i32 {
-    let rt = Runtime::global();
+async fn main(name: String) -> i32 {
+    println!("Hello {name}, you have 5s to enter your to be greeted");
 
-    for i in 1..5 {
-        rt.spawn(async move {
-            sleep(Duration::from_secs(i)).await;
-            println!("{}", 5 - i);
-        });
-    }
-
-    rt.spawn(async move {
-        println!("Hello {name}, you have 5s to enter your name and press enter to be greeted");
-        let mut name = String::new();
-        let stdin = stdin();
-        let mut stdin = stdin.lock();
-        let timeout = sleep(Duration::from_secs(5));
-        let read = stdin.read_line(&mut name);
-        select_biased! {
-            _ = timeout.fuse() => {
-                println!("Timeout entering your name!");
-                return;
-            }
-            _ = read.fuse() => {
-                let name = name.trim();
-                println!("Hello, {name}!");
-                return;
-            }
-        };
+    spawn(async {
+        println!("5 ...");
+        for i in 1..5 {
+            sleep(Duration::from_secs(1)).await;
+            print!("\x1b[s\x1b[A\x1b[G{} ...\x1b[u", 5 - i);
+            let _ = stdout().flush();
+        }
     });
 
-    rt.run();
+    let name = stdin()
+        .read_line_to_string()
+        .timeout(Duration::from_secs(5))
+        .await
+        .transpose()
+        .unwrap()
+        .unwrap_or("anonymous".to_string());
+
+    let name = name.trim();
+
+    println!("Hello {name:?}!");
+
+    println!("Goodbye!");
 
     return 0;
 }
