@@ -1,45 +1,45 @@
 use alloc::collections::{BinaryHeap, VecDeque};
-use core::cmp::Reverse;
+use core::{cmp::Reverse, ops::Deref};
 
-use super::controller::WorkController;
+use crate::{
+    host::{get_time, poll_input, sleep},
+    notify::Notify,
+};
 
-use crate::host::{get_time, poll_input, sleep};
+struct Unordered<T>(pub T);
+
+impl<T> Ord for Unordered<T> {
+    fn cmp(&self, _: &Self) -> core::cmp::Ordering {
+        core::cmp::Ordering::Equal
+    }
+}
+impl<T> PartialOrd for Unordered<T> {
+    fn partial_cmp(&self, _: &Self) -> Option<core::cmp::Ordering> {
+        Some(core::cmp::Ordering::Equal)
+    }
+}
+impl<T> PartialEq for Unordered<T> {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+impl<T> Eq for Unordered<T> {}
+
+impl<T> Deref for Unordered<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 #[derive(Default)]
 pub(super) struct RuntimeWork {
-    pub(super) timers: BinaryHeap<(Reverse<u64>, WorkController)>,
-    pub(super) ios: VecDeque<WorkController>,
+    timers: BinaryHeap<(Reverse<u64>, Unordered<Notify>)>,
+    ios: VecDeque<Notify>,
 }
 
 impl RuntimeWork {
-    fn peek_timer(&mut self) -> Option<(u64, WorkController)> {
-        while let Some((Reverse(deadline), controller)) = self.timers.peek().cloned() {
-            match controller.is_cancelled() {
-                true => self.pop_timer(),
-                false => return Some((deadline, controller)),
-            };
-        }
-        None
-    }
-
-    fn pop_timer(&mut self) {
-        self.timers.pop();
-    }
-
-    fn peek_io(&mut self) -> Option<WorkController> {
-        while let Some(controller) = self.ios.front().cloned() {
-            match controller.is_cancelled() {
-                true => self.pop_io(),
-                false => return Some(controller),
-            };
-        }
-        None
-    }
-
-    fn pop_io(&mut self) {
-        self.ios.pop_front();
-    }
-
     pub(super) fn work_pending(&self) -> bool {
         !self.timers.is_empty() || !self.ios.is_empty()
     }
@@ -47,14 +47,14 @@ impl RuntimeWork {
     pub(super) fn work(&mut self) {
         let mut timeout = None;
         let mut now = None;
-        while let Some((deadline, controller)) = self.peek_timer() {
+        while let Some((Reverse(deadline), notify)) = self.timers.peek() {
             // we have a scheduled timer
             let now = *now.get_or_insert_with(|| get_time());
-            if deadline <= now {
+            if *deadline <= now {
                 // and the timer needed to wake up
                 timeout = Some(0);
-                controller.wake_by_ref();
-                self.pop_timer();
+                notify.notify_waiters();
+                self.timers.pop();
             } else {
                 // the timer doesn't need to wake up yet
                 // since the times are sorted by deadline,
@@ -74,16 +74,24 @@ impl RuntimeWork {
         // one IO channel (stdin). If we have more, then the program has
         // some race condition. This will change if we have more IO
         // channels
-        if let Some(controller) = self.peek_io() {
+        if let Some(notify) = self.ios.front() {
             // we have IO work to do
             // wait for it until a timer timeout (timeout == 0 => no timeout)
             if poll_input(timeout.unwrap_or_default()) {
-                controller.wake_by_ref();
-                self.pop_io();
+                notify.notify_waiters();
+                self.ios.pop_front();
             }
         } else if let Some(timeout) = timeout {
             // no IO work to do, just wait for the timer
             sleep(timeout);
         }
+    }
+
+    pub(crate) fn schedule_timer(&mut self, deadline: u64, notify: Notify) {
+        self.timers.push((Reverse(deadline), Unordered(notify)));
+    }
+
+    pub(crate) fn schedule_io(&mut self, notify: Notify) {
+        self.ios.push_back(notify);
     }
 }

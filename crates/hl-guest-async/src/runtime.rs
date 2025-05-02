@@ -1,16 +1,20 @@
 use alloc::sync::Arc;
 use core::cell::UnsafeCell;
-use core::cmp::Reverse;
 use core::future::Future;
+use core::pin::Pin;
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::task::{Context, Poll};
+use futures::future::BoxFuture;
+use futures::{select_biased, FutureExt};
 use spin::Mutex;
 
-mod channel;
-pub(crate) mod controller;
 mod task;
 mod work;
 
-use channel::{channel, Receiver, Sender};
-use controller::WorkController;
+use crate::{
+    channel::{channel, Receiver, Sender},
+    notify::Notify,
+};
 use task::Task;
 
 pub struct Runtime {
@@ -20,10 +24,19 @@ pub struct Runtime {
 }
 
 impl Runtime {
-    pub fn run(&self) {
+    fn run(&self, stop: Arc<AtomicBool>) {
         loop {
-            while let Some(task) = self.scheduled.try_recv() {
+            loop {
+                if stop.load(Ordering::SeqCst) {
+                    return;
+                }
+                let Some(task) = self.scheduled.try_recv() else {
+                    break;
+                };
                 task.poll();
+            }
+            if stop.load(Ordering::SeqCst) {
+                return;
             }
             let mut work = self.work.lock();
             if !work.work_pending() {
@@ -31,6 +44,21 @@ impl Runtime {
             }
             work.work();
         }
+    }
+
+    pub fn block_on<T: Send + 'static>(
+        &self,
+        future: impl Future<Output = T> + Send + 'static,
+    ) -> T {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_clone = stop.clone();
+        let (tx, rx) = channel();
+        self.spawn(async move {
+            tx.send(future.await);
+            stop_clone.store(true, Ordering::SeqCst);
+        });
+        self.run(stop);
+        rx.try_recv().unwrap()
     }
 
     fn new() -> Runtime {
@@ -55,18 +83,53 @@ impl Runtime {
     ///
     /// The given future is wrapped with the `Task` harness and pushed into the
     /// `scheduled` queue. The future will be executed when `run` is called.
-    pub fn spawn(&self, future: impl Future<Output = ()> + Send + 'static) {
-        Task::spawn(future, &self.sender);
+    pub fn spawn<T: Send + 'static>(
+        &self,
+        future: impl Future<Output = T> + Send + 'static,
+    ) -> JoinHandle<T> {
+        let (tx, rx) = channel();
+        let notify = Notify::new();
+        let notified = notify.notified();
+        Task::spawn(
+            async move {
+                let result = select_biased! {
+                    _ = notified.fuse() => None,
+                    result = future.fuse() => Some(result),
+                };
+                tx.send(result);
+            },
+            &self.sender,
+        );
+        JoinHandle {
+            result: async move { rx.recv().await }.boxed(),
+            abort: notify,
+        }
     }
 
-    pub(crate) fn schedule_timer(&self, deadline: u64, controller: WorkController) {
-        self.work
-            .lock()
-            .timers
-            .push((Reverse(deadline), controller));
+    pub(crate) fn schedule_timer(&self, deadline: u64, notify: Notify) {
+        self.work.lock().schedule_timer(deadline, notify);
     }
 
-    pub(crate) fn schedule_io(&self, controller: WorkController) {
-        self.work.lock().ios.push_back(controller);
+    pub(crate) fn schedule_io(&self, notify: Notify) {
+        self.work.lock().schedule_io(notify);
+    }
+}
+
+pub struct JoinHandle<T> {
+    result: BoxFuture<'static, Option<T>>,
+    abort: Notify,
+}
+
+impl JoinHandle<()> {
+    pub fn abort(self) {
+        self.abort.notify_waiters();
+    }
+}
+
+impl<T> Future for JoinHandle<T> {
+    type Output = Option<T>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.result.as_mut().poll(cx)
     }
 }

@@ -6,7 +6,7 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 use spin::Mutex;
 
-use super::channel::Sender;
+use crate::channel::Sender;
 
 /// A structure holding a future and the result of
 /// the latest call to its `poll` method.

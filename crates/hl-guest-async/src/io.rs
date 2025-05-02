@@ -1,7 +1,25 @@
 use alloc::{string::String, vec::Vec};
 use spin::{Lazy, Mutex, MutexGuard};
 
-mod read;
+use crate::host::try_input;
+use crate::notify::Notify;
+
+pub async fn read(buf: &mut [u8]) -> usize {
+    loop {
+        let notify = Notify::new();
+        let notified = notify.notified();
+        crate::runtime::Runtime::global().schedule_io(notify);
+        notified.await;
+
+        let buffer = try_input(buf.len() as _);
+        if buffer.is_empty() {
+            continue;
+        }
+
+        buf[0..buffer.len()].copy_from_slice(&buffer);
+        return buffer.len();
+    }
+}
 
 pub struct Stdin {
     inner: &'static Mutex<StdinInner>,
@@ -35,8 +53,12 @@ impl Stdin {
         self.lock().read(buf).await
     }
 
-    pub async fn read_line(&self, buf: &mut alloc::string::String) -> Result<usize, Never> {
+    pub async fn read_line<'a>(&'a self, buf: &'a mut String) -> Result<usize, Never> {
         self.lock().read_line(buf).await
+    }
+
+    pub async fn read_line_to_string(&self) -> Result<String, Never> {
+        self.lock().read_line_to_string().await
     }
 }
 
@@ -45,7 +67,7 @@ impl StdinLock<'_> {
         let buffer = &mut self.inner.buffer;
         while buffer.is_empty() {
             buffer.resize(1024, 0);
-            let n = read::read(buffer).await;
+            let n = read(buffer).await;
             buffer.truncate(n);
         }
 
@@ -56,7 +78,7 @@ impl StdinLock<'_> {
         Ok(tail.len())
     }
 
-    pub async fn read_line(&mut self, buf: &mut alloc::string::String) -> Result<usize, Never> {
+    pub async fn read_line<'a>(&mut self, buf: &'a mut String) -> Result<usize, Never> {
         let mut bytes = alloc::vec![];
         loop {
             let mut c = 0u8;
@@ -70,6 +92,12 @@ impl StdinLock<'_> {
         let bytes = String::from_utf8_lossy(&bytes);
         buf.push_str(&bytes);
         Ok(bytes.len())
+    }
+
+    pub async fn read_line_to_string(&mut self) -> Result<String, Never> {
+        let mut buf = String::new();
+        let _ = self.read_line(&mut buf).await;
+        Ok(buf)
     }
 }
 

@@ -1,52 +1,28 @@
-use core::future::Future;
-use core::pin::Pin;
-use core::task::{Context, Poll};
-use core::time::Duration;
-
-use crate::runtime::controller::WorkController;
-
 use super::host::get_time;
+use crate::notify::Notify;
+use core::future::Future;
+use core::time::Duration;
+use futures::{select_biased, FutureExt};
 
 pub async fn sleep(duration: Duration) {
-    Sleep::new(duration).await;
+    let notify = Notify::new();
+    let notified = notify.notified();
+    let deadline = get_time() + duration.as_micros() as u64;
+    crate::runtime::Runtime::global().schedule_timer(deadline, notify);
+    notified.await;
 }
 
-struct Sleep {
-    deadline: u64,
-    controller: WorkController,
+pub trait Timeout: Future {
+    #[allow(async_fn_in_trait)]
+    async fn timeout(self, duration: Duration) -> Option<Self::Output>;
 }
 
-impl Sleep {
-    /// Create a new `Delay` future that will complete after the given
-    /// duration.
-    fn new(duration: Duration) -> Self {
-        let deadline = get_time() + duration.as_micros() as u64;
-        let controller = WorkController::default();
-        super::runtime::Runtime::global().schedule_timer(deadline, controller.clone());
-        Self {
-            deadline,
-            controller,
+impl<F: Future> Timeout for F {
+    async fn timeout(self, duration: Duration) -> Option<Self::Output> {
+        let mut this = core::pin::pin!(self.fuse());
+        select_biased! {
+            _ = sleep(duration).fuse() => None,
+            result = this => Some(result),
         }
-    }
-}
-
-impl Future for Sleep {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-        let now = get_time();
-        if self.deadline <= now {
-            return Poll::Ready(());
-        }
-
-        self.controller.update_waker(cx);
-
-        Poll::Pending
-    }
-}
-
-impl Drop for Sleep {
-    fn drop(&mut self) {
-        self.controller.cancel();
     }
 }
