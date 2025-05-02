@@ -66,7 +66,7 @@ pub fn guest_function(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     let ret = match &fn_declaration.sig.output {
-        syn::ReturnType::Default => quote! { quote! { () } },
+        syn::ReturnType::Default => quote! { () },
         syn::ReturnType::Type(_, ty) => {
             quote! { #ty }
         }

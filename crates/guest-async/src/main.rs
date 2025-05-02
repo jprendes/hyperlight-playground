@@ -6,11 +6,11 @@ use core::time::Duration;
 
 use alloc::string::{String, ToString as _};
 
-use hl_guest::io::{stdout, Write as _};
-use hl_guest::{guest_function, println, print};
 use hl_guest::asyncio::io::stdin;
 use hl_guest::asyncio::spawn;
 use hl_guest::asyncio::time::{sleep, Timeout as _};
+use hl_guest::io::{stdout, Write as _};
+use hl_guest::{guest_function, print, println};
 
 #[guest_function("Main")]
 async fn main(name: String) -> i32 {
@@ -39,5 +39,5 @@ async fn main(name: String) -> i32 {
 
     println!("Goodbye!");
 
-    return 0;
+    0
 }
