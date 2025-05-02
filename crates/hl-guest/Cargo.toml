@@ -9,6 +9,11 @@ hyperlight-guest = { workspace = true }
 hyperlight-common = { workspace = true }
 linkme = { version = "0.3.32" }
 spin = { version = "0.10.0", default-features = false, features = ["mutex", "spin_mutex"] }
+hl-guest-async = { workspace = true, optional = true }
 
 [build-dependencies]
 cc = { version = "1.2" }
+
+[features]
+default = ["async"]
+async = ["dep:hl-guest-async"]

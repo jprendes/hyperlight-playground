@@ -79,7 +79,7 @@ pub fn guest_function(attr: TokenStream, item: TokenStream) -> TokenStream {
         fn_declaration.block = Box::new(syn::Block {
             brace_token: fn_declaration.block.brace_token,
             stmts: parse_quote! {
-                hl_guest_async::block_on(async move {
+                #crate_name::asyncio::block_on(async move {
                     #block
                 })
             },

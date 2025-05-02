@@ -38,3 +38,6 @@ fn guest_dispatch_function(
 }
 
 pub mod io;
+
+#[cfg(feature = "async")]
+pub mod asyncio;

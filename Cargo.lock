@@ -594,7 +594,6 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "hl-guest",
- "hl-guest-async",
 ]
 
 [[package]]
@@ -620,6 +619,7 @@ name = "hl-guest"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "hl-guest-async",
  "hl-guest-macros",
  "hyperlight-common",
  "hyperlight-guest",
@@ -632,7 +632,7 @@ name = "hl-guest-async"
 version = "0.1.0"
 dependencies = [
  "futures",
- "hl-guest",
+ "linkme",
  "spin 0.10.0",
 ]
 

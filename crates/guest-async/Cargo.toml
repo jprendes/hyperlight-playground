@@ -5,5 +5,4 @@ edition = "2021"
 
 [dependencies]
 hl-guest = { workspace = true }
-hl-guest-async = { workspace = true }
 futures = { version = "0.3", default-features = false, features = ["alloc", "async-await"] }

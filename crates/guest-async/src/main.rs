@@ -8,9 +8,9 @@ use alloc::string::{String, ToString as _};
 
 use hl_guest::io::{stdout, Write as _};
 use hl_guest::{guest_function, println, print};
-use hl_guest_async::io::stdin;
-use hl_guest_async::spawn;
-use hl_guest_async::time::{sleep, Timeout as _};
+use hl_guest::asyncio::io::stdin;
+use hl_guest::asyncio::spawn;
+use hl_guest::asyncio::time::{sleep, Timeout as _};
 
 #[guest_function("Main")]
 async fn main(name: String) -> i32 {
