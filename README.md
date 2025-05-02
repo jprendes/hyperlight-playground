@@ -31,18 +31,10 @@ The arguments and return types of the functions must be one of the serializable 
 
 Additionally the return type can be a `Result<T, E>`, where `T` is a serializable type and E can be converted to (guest_function) / from (host_function) [`HyperlightGuestError`](https://docs.rs/hyperlight-guest/latest/hyperlight_guest/error/struct.HyperlightGuestError.html). If the return type is not a result, any error will be `unwrap`ed.
 
-Enabling the `async` feature lets you export async guest functions.
-```rust
-use hl_guest::asyncio::time::sleep;
-use core::time::Duration;
+Enabling the `async` feature lets you export async guest functions (see the [async section](#async-guest-functions) below for more details).
 
-#[guest_function]
-async fn slow_echo(name: String) -> String {
-    sleep(Duration::from_secs(1)).await
-    name
-}
-```
-See the async section below for more details.
+<details>
+<summary>Example using <code>Result</code></summary>
 
 ```rust
 #![no_std]
@@ -75,10 +67,23 @@ fn life(name: String) -> Result<i32, Error> {
     return Ok(42);
 }
 ```
+</details>
 
 ## Async guest functions
 
-Enabling the `async` feature you can use the `hl_guest::asyncio` module, which provides a minimal set of async functionalities.
+Enabling the `async` feature you can use the `hl_guest::asyncio` module.
+```rust
+use hl_guest::asyncio::time::sleep;
+use core::time::Duration;
+
+#[guest_function]
+async fn slow_echo(name: String) -> String {
+    sleep(Duration::from_secs(1)).await
+    name
+}
+```
+
+The `asyncio` module provides a minimal set of async functionalities.
 * `block_on`: execute async code in a sync context.
 * `spawn`: spawn tasks and joint them with the returned `JoinHandle`.
 * `io::stdin`: asynchronously read from stdin.
