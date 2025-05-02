@@ -1,8 +1,8 @@
 use alloc::collections::{BinaryHeap, VecDeque};
-use core::{cmp::Reverse, ops::Deref};
+use core::{cmp::Reverse, ops::Deref, time::Duration};
 
 use crate::{
-    host::{get_time, poll_input, sleep},
+    host::{get_time, poll_read, sleep},
     notify::Notify,
 };
 
@@ -35,7 +35,7 @@ impl<T> Deref for Unordered<T> {
 
 #[derive(Default)]
 pub(super) struct RuntimeWork {
-    timers: BinaryHeap<(Reverse<u64>, Unordered<Notify>)>,
+    timers: BinaryHeap<(Reverse<Duration>, Unordered<Notify>)>,
     ios: VecDeque<Notify>,
 }
 
@@ -52,19 +52,19 @@ impl RuntimeWork {
             let now = *now.get_or_insert_with(|| get_time());
             if *deadline <= now {
                 // and the timer needed to wake up
-                timeout = Some(0);
+                timeout = Some(Duration::ZERO);
                 notify.notify_waiters();
                 self.timers.pop();
             } else {
                 // the timer doesn't need to wake up yet
                 // since the times are sorted by deadline,
                 // we can stop looking for more timers.
-                timeout.get_or_insert_with(|| deadline - now);
+                timeout.get_or_insert_with(|| deadline.saturating_sub(now));
                 break;
             }
         }
 
-        if timeout == Some(0) {
+        if timeout == Some(Duration::ZERO) {
             // we need to wake up immediately as at least one
             // timer is ready to wake up
             return;
@@ -77,7 +77,7 @@ impl RuntimeWork {
         if let Some(notify) = self.ios.front() {
             // we have IO work to do
             // wait for it until a timer timeout (timeout == 0 => no timeout)
-            if poll_input(timeout.unwrap_or_default()) {
+            if poll_read(timeout.unwrap_or_default()) {
                 notify.notify_waiters();
                 self.ios.pop_front();
             }
@@ -87,7 +87,7 @@ impl RuntimeWork {
         }
     }
 
-    pub(crate) fn schedule_timer(&mut self, deadline: u64, notify: Notify) {
+    pub(crate) fn schedule_timer(&mut self, deadline: Duration, notify: Notify) {
         self.timers.push((Reverse(deadline), Unordered(notify)));
     }
 

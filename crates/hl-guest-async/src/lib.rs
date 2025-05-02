@@ -5,8 +5,9 @@
 
 extern crate alloc;
 
+#[doc(hidden)]
+pub mod host;
 pub mod channel;
-mod host;
 pub mod io;
 pub mod notify;
 mod runtime;

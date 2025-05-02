@@ -1,23 +1,20 @@
 use alloc::{string::String, vec::Vec};
 use spin::{Lazy, Mutex, MutexGuard};
 
-use crate::host::try_input;
+use crate::host::try_read;
 use crate::notify::Notify;
 
 pub async fn read(buf: &mut [u8]) -> usize {
     loop {
+        let n = try_read(buf);
+        if n > 0 {
+            return n;
+        }
+
         let notify = Notify::new();
         let notified = notify.notified();
         crate::runtime::Runtime::global().schedule_io(notify);
         notified.await;
-
-        let buffer = try_input(buf.len() as _);
-        if buffer.is_empty() {
-            continue;
-        }
-
-        buf[0..buffer.len()].copy_from_slice(&buffer);
-        return buffer.len();
     }
 }
 

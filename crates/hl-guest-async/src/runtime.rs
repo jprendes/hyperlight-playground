@@ -4,6 +4,7 @@ use core::future::Future;
 use core::pin::Pin;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{Context, Poll};
+use core::time::Duration;
 use futures::future::BoxFuture;
 use futures::{select_biased, FutureExt};
 use spin::Mutex;
@@ -106,7 +107,7 @@ impl Runtime {
         }
     }
 
-    pub(crate) fn schedule_timer(&self, deadline: u64, notify: Notify) {
+    pub(crate) fn schedule_timer(&self, deadline: Duration, notify: Notify) {
         self.work.lock().schedule_timer(deadline, notify);
     }
 

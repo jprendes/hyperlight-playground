@@ -7,7 +7,7 @@ use futures::{select_biased, FutureExt};
 pub async fn sleep(duration: Duration) {
     let notify = Notify::new();
     let notified = notify.notified();
-    let deadline = get_time() + duration.as_micros() as u64;
+    let deadline = get_time() + duration;
     crate::runtime::Runtime::global().schedule_timer(deadline, notify);
     notified.await;
 }
