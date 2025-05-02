@@ -31,6 +31,8 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::try_parse()?;
 
+    env_logger::init();
+
     let writer = move |msg: String| -> Result<i32, HyperlightError> {
         print!("{msg}");
         let _ = stdout().flush();
