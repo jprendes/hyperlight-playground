@@ -34,12 +34,20 @@ mod host_impl {
             data.len()
         }
 
-        fn poll_read(&self, timeout: Duration) -> bool {
-            poll_read(timeout.as_micros() as u64)
+        fn poll_read(&self, timeout: Option<Duration>) -> bool {
+            match timeout {
+                None => poll_read(0),
+                Some(Duration::ZERO) => false,
+                Some(timeout) => poll_read(timeout.min(Duration::from_secs(30)).as_micros() as u64),
+            }
         }
 
-        fn sleep(&self, duration: Duration) {
-            sleep(duration.as_micros() as u64);
+        fn sleep(&self, duration: Option<Duration>) {
+            match duration {
+                None => sleep(0),
+                Some(Duration::ZERO) => {}
+                Some(duration) => sleep(duration.min(Duration::from_secs(30)).as_micros() as u64),
+            }
         }
     }
 

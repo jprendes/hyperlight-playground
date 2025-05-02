@@ -77,13 +77,13 @@ impl RuntimeWork {
         if let Some(notify) = self.ios.front() {
             // we have IO work to do
             // wait for it until a timer timeout (timeout == 0 => no timeout)
-            if poll_read(timeout.unwrap_or_default()) {
+            if poll_read(timeout) {
                 notify.notify_waiters();
                 self.ios.pop_front();
             }
         } else if let Some(timeout) = timeout {
             // no IO work to do, just wait for the timer
-            sleep(timeout);
+            sleep(Some(timeout));
         }
     }
 

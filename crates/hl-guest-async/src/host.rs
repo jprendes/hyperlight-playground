@@ -9,8 +9,8 @@ pub static ASYNC_HOST_FUNCTIONS: [fn() -> &'static dyn HostFunctions];
 pub trait HostFunctions: Send + Sync + 'static {
     fn get_time(&self) -> Duration;
     fn try_read(&self, buf: &mut [u8]) -> usize;
-    fn poll_read(&self, timeout: Duration) -> bool;
-    fn sleep(&self, duration: Duration) -> ();
+    fn poll_read(&self, timeout: Option<Duration>) -> bool;
+    fn sleep(&self, duration: Option<Duration>) -> ();
 }
 
 fn get_host_functions() -> &'static dyn HostFunctions {
@@ -28,10 +28,10 @@ pub fn try_read(buf: &mut [u8]) -> usize {
     get_host_functions().try_read(buf)
 }
 
-pub fn poll_read(timeout: Duration) -> bool {
+pub fn poll_read(timeout: Option<Duration>) -> bool {
     get_host_functions().poll_read(timeout)
 }
 
-pub fn sleep(duration: Duration) {
+pub fn sleep(duration: Option<Duration>) {
     get_host_functions().sleep(duration)
 }
