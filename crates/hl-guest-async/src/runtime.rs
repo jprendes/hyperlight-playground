@@ -25,10 +25,11 @@ impl Runtime {
             while let Some(task) = self.scheduled.try_recv() {
                 task.poll();
             }
-
-            if !self.work.lock().work() {
+            let mut work = self.work.lock();
+            if !work.work_pending() {
                 break;
             }
+            work.work();
         }
     }
 
