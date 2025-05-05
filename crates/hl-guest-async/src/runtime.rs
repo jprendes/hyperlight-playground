@@ -1,13 +1,10 @@
-use alloc::sync::Arc;
-use core::cell::UnsafeCell;
 use core::future::Future;
 use core::pin::Pin;
-use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{Context, Poll};
 use core::time::Duration;
 use futures::future::BoxFuture;
 use futures::{select_biased, FutureExt};
-use spin::Mutex;
+use spin::{Mutex, Once};
 
 mod task;
 mod work;
@@ -19,49 +16,12 @@ use crate::{
 use task::Task;
 
 pub struct Runtime {
-    scheduled: Receiver<Arc<Task>>,
-    sender: Sender<Arc<Task>>,
+    scheduled: Receiver<Task>,
+    sender: Sender<Task>,
     work: Mutex<work::RuntimeWork>,
 }
 
 impl Runtime {
-    fn run(&self, stop: Arc<AtomicBool>) {
-        loop {
-            loop {
-                if stop.load(Ordering::SeqCst) {
-                    return;
-                }
-                let Some(task) = self.scheduled.try_recv() else {
-                    break;
-                };
-                task.poll();
-            }
-            if stop.load(Ordering::SeqCst) {
-                return;
-            }
-            let mut work = self.work.lock();
-            if !work.work_pending() {
-                break;
-            }
-            work.work();
-        }
-    }
-
-    pub fn block_on<T: Send + 'static>(
-        &self,
-        future: impl Future<Output = T> + Send + 'static,
-    ) -> T {
-        let stop = Arc::new(AtomicBool::new(false));
-        let stop_clone = stop.clone();
-        let (tx, rx) = channel();
-        self.spawn(async move {
-            tx.send(future.await);
-            stop_clone.store(true, Ordering::SeqCst);
-        });
-        self.run(stop);
-        rx.try_recv().unwrap()
-    }
-
     fn new() -> Runtime {
         let (sender, scheduled) = channel();
         Runtime {
@@ -71,13 +31,31 @@ impl Runtime {
         }
     }
 
+    pub fn block_on<T>(&self, future: impl Future<Output = T>) -> T {
+        let mut future = future.fuse().boxed_local();
+        Task::block_on(&self.sender);
+        loop {
+            loop {
+                let Some(task) = self.scheduled.try_recv() else {
+                    break;
+                };
+                match task {
+                    Task::Spawn(t) => t.poll(),
+                    Task::BlockOn(t) => {
+                        if let Poll::Ready(val) = t.poll(&mut future) {
+                            return val;
+                        }
+                    }
+                };
+            }
+            let mut work = self.work.lock();
+            work.work();
+        }
+    }
+
     pub fn global() -> &'static Runtime {
-        static INSTANCE: Mutex<Option<UnsafeCell<Runtime>>> = Mutex::new(None);
-        let ptr = INSTANCE
-            .lock()
-            .get_or_insert_with(|| UnsafeCell::new(Runtime::new()))
-            .get();
-        unsafe { &*ptr }
+        static INSTANCE: Once<Runtime> = Once::new();
+        INSTANCE.call_once(|| Runtime::new())
     }
 
     /// Spawn a future onto the runtime.

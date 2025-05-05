@@ -4,9 +4,14 @@ use spin::Mutex;
 
 use crate::notify::Notify;
 
-#[derive(Clone)]
 pub struct Sender<T>(Arc<Channel<T>>);
 pub struct Receiver<T>(Arc<Channel<T>>);
+
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Self {
+        Sender(Arc::clone(&self.0))
+    }
+}
 
 struct Channel<T> {
     data: Mutex<VecDeque<T>>,

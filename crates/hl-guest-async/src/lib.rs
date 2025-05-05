@@ -17,7 +17,7 @@ use core::future::Future;
 
 pub use runtime::JoinHandle;
 
-pub fn block_on<T: Send + 'static>(future: impl Future<Output = T> + Send + 'static) -> T {
+pub fn block_on<T>(future: impl Future<Output = T>) -> T {
     runtime::Runtime::global().block_on(future)
 }
 

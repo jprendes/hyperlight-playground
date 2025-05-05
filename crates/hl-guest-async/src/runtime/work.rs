@@ -40,10 +40,6 @@ pub(super) struct RuntimeWork {
 }
 
 impl RuntimeWork {
-    pub(super) fn work_pending(&self) -> bool {
-        !self.timers.is_empty() || !self.ios.is_empty()
-    }
-
     pub(super) fn work(&mut self) {
         let mut timeout = None;
         let mut now = None;
