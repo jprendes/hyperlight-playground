@@ -2,19 +2,26 @@ use alloc::{string::String, vec::Vec};
 use spin::{Lazy, Mutex, MutexGuard};
 
 use crate::host::try_read;
-use crate::notify::Notify;
+use crate::runtime::Runtime;
 
-pub async fn read(buf: &mut [u8]) -> usize {
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub enum Error {
+    Again,
+    Other,
+}
+
+pub type Result<T> = core::result::Result<T, Error>;
+
+pub async fn read(buf: &mut [u8]) -> Result<usize> {
     loop {
-        let n = try_read(buf);
-        if n > 0 {
-            return n;
+        match try_read(0, buf) {
+            Ok(n) => return Ok(n),
+            Err(Error::Again) => {},
+            Err(e) => return Err(e),
         }
 
-        let notify = Notify::new();
-        let notified = notify.notified();
-        crate::runtime::Runtime::global().schedule_io(notify);
-        notified.await;
+        Runtime::global().schedule_io(0).await;
     }
 }
 
@@ -46,25 +53,25 @@ impl Stdin {
         }
     }
 
-    pub async fn read(&self, buf: &mut [u8]) -> Result<usize, Never> {
+    pub async fn read(&self, buf: &mut [u8]) -> Result<usize> {
         self.lock().read(buf).await
     }
 
-    pub async fn read_line<'a>(&'a self, buf: &'a mut String) -> Result<usize, Never> {
+    pub async fn read_line<'a>(&'a self, buf: &'a mut String) -> Result<usize> {
         self.lock().read_line(buf).await
     }
 
-    pub async fn read_line_to_string(&self) -> Result<String, Never> {
+    pub async fn read_line_to_string(&self) -> Result<String> {
         self.lock().read_line_to_string().await
     }
 }
 
 impl StdinLock<'_> {
-    pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Never> {
+    pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let buffer = &mut self.inner.buffer;
         while buffer.is_empty() {
             buffer.resize(1024, 0);
-            let n = read(buffer).await;
+            let n = read(buffer).await?;
             buffer.truncate(n);
         }
 
@@ -75,7 +82,7 @@ impl StdinLock<'_> {
         Ok(tail.len())
     }
 
-    pub async fn read_line<'a>(&mut self, buf: &'a mut String) -> Result<usize, Never> {
+    pub async fn read_line<'a>(&mut self, buf: &'a mut String) -> Result<usize> {
         let mut bytes = alloc::vec![];
         loop {
             let mut c = 0u8;
@@ -91,9 +98,9 @@ impl StdinLock<'_> {
         Ok(bytes.len())
     }
 
-    pub async fn read_line_to_string(&mut self) -> Result<String, Never> {
+    pub async fn read_line_to_string(&mut self) -> Result<String> {
         let mut buf = String::new();
-        let _ = self.read_line(&mut buf).await;
+        self.read_line(&mut buf).await?;
         Ok(buf)
     }
 }

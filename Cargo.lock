@@ -655,7 +655,6 @@ name = "hl-guest-async"
 version = "0.1.0"
 dependencies = [
  "futures",
- "linkme",
  "spin 0.10.0",
 ]
 

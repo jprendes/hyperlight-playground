@@ -9,10 +9,8 @@ use spin::{Mutex, Once};
 mod task;
 mod work;
 
-use crate::{
-    channel::{channel, Receiver, Sender},
-    notify::Notify,
-};
+use crate::channel::{channel, Receiver, Sender};
+use crate::notify::{Notified, Notify};
 use task::Task;
 
 pub struct Runtime {
@@ -85,12 +83,12 @@ impl Runtime {
         }
     }
 
-    pub(crate) fn schedule_timer(&self, deadline: Duration, notify: Notify) {
-        self.work.lock().schedule_timer(deadline, notify);
+    pub(crate) fn schedule_timer(&self, deadline: Duration) -> Notified {
+        self.work.lock().schedule_timer(deadline)
     }
 
-    pub(crate) fn schedule_io(&self, notify: Notify) {
-        self.work.lock().schedule_io(notify);
+    pub(crate) fn schedule_io(&self, fd: i32) -> Notified {
+        self.work.lock().schedule_io(fd)
     }
 }
 

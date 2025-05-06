@@ -6,4 +6,3 @@ edition = "2021"
 [dependencies]
 futures = { version = "0.3", default-features = false, features = ["alloc", "async-await"] }
 spin = { version = "0.10.0", default-features = false, features = ["mutex", "spin_mutex", "lazy"] }
-linkme = { version = "0.3.32" }

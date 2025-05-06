@@ -1,9 +1,11 @@
-use alloc::collections::{BinaryHeap, VecDeque};
+
+use alloc::collections::{BTreeMap, BinaryHeap};
+use alloc::vec::Vec;
 use core::{cmp::Reverse, ops::Deref, time::Duration};
 
 use crate::{
     host::{get_time, poll_read, sleep},
-    notify::Notify,
+    notify::{Notified, Notify},
 };
 
 struct Unordered<T>(pub T);
@@ -36,7 +38,7 @@ impl<T> Deref for Unordered<T> {
 #[derive(Default)]
 pub(super) struct RuntimeWork {
     timers: BinaryHeap<(Reverse<Duration>, Unordered<Notify>)>,
-    ios: VecDeque<Notify>,
+    ios: BTreeMap<i32, Notify>,
 }
 
 impl RuntimeWork {
@@ -70,12 +72,18 @@ impl RuntimeWork {
         // one IO channel (stdin). If we have more, then the program has
         // some race condition. This will change if we have more IO
         // channels
-        if let Some(notify) = self.ios.front() {
+        let mut fds: Vec<_> = self.ios.keys().copied().collect();
+        if !fds.is_empty() {
             // we have IO work to do
-            // wait for it until a timer timeout (timeout == 0 => no timeout)
-            if poll_read(timeout) {
-                notify.notify_waiters();
-                self.ios.pop_front();
+            // wait for IO to be ready, or until a timer timeout
+            if poll_read(&mut fds, timeout).is_ok() {
+                for fd in fds {
+                    if fd >= 0 {
+                        if let Some(notify) = self.ios.remove(&fd) {
+                            notify.notify_waiters();
+                        }
+                    }
+                }
             }
         } else if let Some(timeout) = timeout {
             // no IO work to do, just wait for the timer
@@ -83,11 +91,15 @@ impl RuntimeWork {
         }
     }
 
-    pub(crate) fn schedule_timer(&mut self, deadline: Duration, notify: Notify) {
+    pub(crate) fn schedule_timer(&mut self, deadline: Duration) -> Notified {
+        let notify = Notify::new();
+        let notified = notify.notified();
         self.timers.push((Reverse(deadline), Unordered(notify)));
+        notified
     }
 
-    pub(crate) fn schedule_io(&mut self, notify: Notify) {
-        self.ios.push_back(notify);
+    pub(crate) fn schedule_io(&mut self, fd: i32) -> Notified {
+        let notify = self.ios.entry(fd).or_insert_with(|| Notify::new());
+        notify.notified()
     }
 }

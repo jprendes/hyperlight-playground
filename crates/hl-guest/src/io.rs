@@ -1,27 +1,17 @@
 extern crate alloc;
 
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec;
 
 use core::fmt::Write as _;
 
-use hyperlight_common::flatbuffer_wrappers::function_types::{ParameterValue, ReturnType};
-use hyperlight_guest::{
-    error::HyperlightGuestError,
-    host_function_call::{call_host_function, get_host_return_value},
-};
+use hyperlight_guest::error::HyperlightGuestError;
 use spin::Mutex;
 
-fn print(msg: impl AsRef<str>) -> Result<usize, HyperlightGuestError> {
-    let msg = String::from(msg.as_ref());
-    call_host_function(
-        "HostPrint",
-        Some(vec![ParameterValue::String(msg)]),
-        ReturnType::Int,
-    )?;
-    let result = get_host_return_value::<i32>()?;
-    Ok(result.max(0) as _)
-}
+use crate::host_function;
+
+#[host_function("HostPrint")]
+fn print(msg: String) -> Result<i32, HyperlightGuestError>;
 
 pub trait Write {
     fn write(&mut self, buf: &[u8]) -> Result<usize, HyperlightGuestError>;
@@ -42,7 +32,7 @@ impl Write for Stdout {
         let mut buffer = BUFFER.lock();
         buffer.push_str(&msg);
         if let Some(n) = buffer.rfind('\n') {
-            let _ = print(&buffer[..=n])?;
+            let _ = print(buffer[..=n].to_string())?;
             *buffer = buffer[n + 1..].into();
         }
         Ok(buf.len())
@@ -50,7 +40,7 @@ impl Write for Stdout {
 
     fn flush(&mut self) -> Result<(), HyperlightGuestError> {
         let mut buffer = BUFFER.lock();
-        let _ = print(&buffer[..])?;
+        let _ = print(buffer[..].to_string())?;
         buffer.clear();
         Ok(())
     }

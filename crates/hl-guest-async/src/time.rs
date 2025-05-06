@@ -1,15 +1,13 @@
+use crate::runtime::Runtime;
+
 use super::host::get_time;
-use crate::notify::Notify;
 use core::future::Future;
 use core::time::Duration;
 use futures::{select_biased, FutureExt};
 
 pub async fn sleep(duration: Duration) {
-    let notify = Notify::new();
-    let notified = notify.notified();
-    let deadline = get_time() + duration;
-    crate::runtime::Runtime::global().schedule_timer(deadline, notify);
-    notified.await;
+    let deadline: Duration = get_time() + duration;
+    Runtime::global().schedule_timer(deadline).await;
 }
 
 pub trait Timeout: Future {

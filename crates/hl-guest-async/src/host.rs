@@ -1,37 +1,63 @@
 use core::time::Duration;
 
-use linkme::distributed_slice;
-use spin::Once;
+use crate::io::{Error, Result};
 
-#[distributed_slice]
-pub static ASYNC_HOST_FUNCTIONS: [fn() -> &'static dyn HostFunctions];
-
-pub trait HostFunctions: Send + Sync + 'static {
-    fn get_time(&self) -> Duration;
-    fn try_read(&self, buf: &mut [u8]) -> usize;
-    fn poll_read(&self, timeout: Option<Duration>) -> bool;
-    fn sleep(&self, duration: Option<Duration>) -> ();
+#[repr(C)]
+#[allow(non_camel_case_types)]
+struct __timespec {
+    tv_sec: i64,
+    tv_nsec: i64,
 }
 
-fn get_host_functions() -> &'static dyn HostFunctions {
-    static FCN: Once<&'static dyn HostFunctions> = Once::new();
-    *FCN.call_once(|| {
-        ASYNC_HOST_FUNCTIONS.first().unwrap()()
-    })
+extern "C" {
+    fn __unixtime() -> __timespec;
+    fn __try_read(fd: i32, buffer: *mut u8, len: usize) -> i32;
+    fn __poll_read(fds: *mut i32, nfds: usize, timeout: __timespec) -> i32;
+    fn __sleep(timeout: __timespec);
 }
 
 pub fn get_time() -> Duration {
-    get_host_functions().get_time()
+    let ts = unsafe { __unixtime() };
+    Duration::new(ts.tv_sec as _, ts.tv_nsec as _)
 }
 
-pub fn try_read(buf: &mut [u8]) -> usize {
-    get_host_functions().try_read(buf)
+pub fn try_read(fd: i32, buf: &mut [u8]) -> Result<usize> {
+    let ret = unsafe { __try_read(fd, buf.as_mut_ptr(), buf.len()) };
+    match ret {
+        0.. => Ok(ret as _),
+        -2 => Err(Error::Again),
+        _ => Err(Error::Other),
+    }
 }
 
-pub fn poll_read(timeout: Option<Duration>) -> bool {
-    get_host_functions().poll_read(timeout)
+pub fn poll_read(mut fds: impl AsMut<[i32]>, timeout: Option<Duration>) -> Result<usize> {
+    if let Some(Duration::ZERO) = timeout {
+        for fd in fds.as_mut() {
+            *fd = -1;
+        }
+        return Ok(0);
+    }
+    let timeout = timeout.unwrap_or_default();
+    let timeout = __timespec {
+        tv_sec: timeout.as_secs() as _,
+        tv_nsec: timeout.subsec_nanos() as _,
+    };
+    let fds = fds.as_mut();
+    let ret = unsafe { __poll_read(fds.as_mut_ptr(), fds.len(), timeout) };
+    if ret < 0 {
+        return Err(Error::Other);
+    }
+    Ok(ret as _)
 }
 
 pub fn sleep(duration: Option<Duration>) {
-    get_host_functions().sleep(duration)
+    if let Some(Duration::ZERO) = duration {
+        return;
+    }
+    let duration = duration.unwrap_or_default();
+    let duration = __timespec {
+        tv_sec: duration.as_secs() as _,
+        tv_nsec: duration.subsec_nanos() as _,
+    };
+    unsafe { __sleep(duration) }
 }
